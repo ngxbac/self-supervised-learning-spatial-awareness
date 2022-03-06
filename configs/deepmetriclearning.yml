@@ -1,0 +1,127 @@
+model_params:
+  model: TIMMetricLearningMModels
+  model_name: "resnet18"
+  num_classes: &num_classes 4
+  aux: &aux True
+
+runner_params:
+  input_key: &input_key images
+  output_key: &output_key ["logits", "logits_ml", "logits_ds1", "logits_ds2", "loss_fn"]
+  input_target_key: &input_target_key ["targets"]
+
+
+#monitoring_params:
+#  project: "ss_task3_revise"
+#  tags: ["aa"]
+
+
+#monitoring_params:
+#  token: "d44be0534e123b3a75425987a70603aa"
+#  project: "FGCV_Plant"
+#  experiment: "resnet18"
+#  group: "metric_learning"
+
+
+monitoring_params:
+  init:
+    project_qualified_name: "ngxbac/FGCV-Plant"
+
+  create_experiment:
+    name: "resnet18-metriclearning"
+    tags: ["metriclearning"]
+#    upload_source_files: ["**/*.py", "**/*.yml", "**/*.sh", "**/Dockerfile"]
+
+
+distributed_params:
+  opt_level: O1
+
+args:
+  expdir: "src"
+  logdir: "/logs/cv_classification"
+
+share:
+  fold: &fold 0
+  csv_file: &csv_file "/data/train_kfold.csv"
+  root: &root "/data/images/"
+  image_size: &image_size [256, 256]
+
+stages:
+
+  data_params: &data_params
+    batch_size: 64
+    num_workers: 4
+
+    fold: *fold
+    csv_file: *csv_file
+    root: *root
+    image_size: *image_size
+
+  state_params:
+    main_metric: &reduced_metric auc/_mean
+    minimize_metric: False
+
+  criterion_params:
+    criterion: MetricLearningLoss
+    aux: *aux
+    num_classes: *num_classes
+
+  optimizer_params:
+    optimizer: Adam
+    lr: 0.0001
+    weight_decay: 0.0001
+
+  stage1:
+    state_params:
+      num_epochs: &num_epochs 15
+
+    scheduler_params:
+      scheduler: OneCycleLRWithWarmup
+      num_steps: *num_epochs
+      lr_range: [0.0003, 0.000005]
+      warmup_steps: 2
+      momentum_range: [0.85, 0.95]
+
+    callbacks_params:
+      loss:
+        callback: CriterionCallback
+        input_key: *input_target_key
+        output_key: *output_key
+      optimizer:
+        callback: OptimizerCallback
+      accuracy:
+        callback: AccuracyCallback
+        accuracy_args: [1]
+      auc:
+        callback: FGCVPlantAUCCallback
+        class_names: ["healthy", "multiple_diseases", "rust", "scab"]
+      scheduler:
+        callback: SchedulerCallback
+        reduced_metric: *reduced_metric
+      saver:
+        callback: CheckpointCallback
+        save_n_best: 3
+
+  infer_valid:
+    state_params:
+      num_epochs: 1
+    data_params: *data_params
+    callbacks_params:
+      loader:
+        callback: CheckpointCallback
+      infer:
+        callback: CustomInferCallback
+        out_prefix: "/"
+
+  infer_test:
+    state_params:
+      num_epochs: 1
+    data_params:
+      csv_file: "/data/test.csv"
+      root: *root
+      image_size: *image_size
+    callbacks_params:
+      loader:
+        callback: CheckpointCallback
+      infer:
+        callback: CustomInferCallback
+        out_prefix: "/"

@@ -1,0 +1,7 @@
+# Run docker container and train 
+```
+make run   # (only one time)
+make exec 
+cd /code/ 
+bash bin/baseline.sh
+``` 

@@ -1,0 +1,81 @@
+model_params:
+#  model: TIMMModels
+#  num_classes: 7
+#  model_name: "resnet34"
+
+  model: proxy_model
+  num_classes: 7
+
+runner_params:
+  input_key: &input_key images
+  output_key: logits
+  input_target_key: targets
+
+
+experiment_params:
+  experiment: CHAOS
+
+
+distributed_params:
+  opt_level: O1
+
+args:
+  expdir: "src"
+  logdir: "/logs/cv_classification"
+
+share:
+  image_size: &image_size [224, 224]
+
+stages:
+
+  data_params: &data_params
+    batch_size: 64
+    num_workers: 4
+
+    train_ct_dir: "/data/CHAOS/Train_Sets/CT/"
+    train_pred_dir: "/data/CHAOS/CT_train_predict/"
+    valid_ct_dir: "/data/CHAOS/Test_Sets/CT/"
+    valid_pred_dir: "/data/CHAOS/CT_test_predict/"
+    image_size: *image_size
+
+    all_data: True
+
+  state_params:
+    main_metric: &reduced_metric f2_score
+    minimize_metric: False
+
+  criterion_params:
+    criterion: BCEWithLogitsLoss #FocalLossMultiClass
+
+  optimizer_params:
+    optimizer: Adam
+    lr: 0.0001
+    weight_decay: 0.0001
+
+  stage1:
+    state_params:
+      num_epochs: &num_epochs 25
+
+    scheduler_params:
+      scheduler: OneCycleLRWithWarmup
+      num_steps: *num_epochs
+      lr_range: [0.0005, 0.000005]
+      warmup_steps: 5
+      momentum_range: [0.85, 0.95]
+
+    callbacks_params:
+      loss:
+        callback: CriterionCallback
+      optimizer:
+        callback: OptimizerCallback
+      f2:
+        callback: MacroF2ScoreCallback
+#      accuracy:
+#        callback: AccuracyCallback
+#        accuracy_args: [1]
+      scheduler:
+        callback: SchedulerCallback
+        reduced_metric: *reduced_metric
+      saver:
+        callback: CheckpointCallback
+        save_n_best: 3

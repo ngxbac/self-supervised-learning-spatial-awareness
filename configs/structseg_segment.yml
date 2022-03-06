@@ -1,0 +1,73 @@
+model_params:
+#  model: smp.Unet
+  model: SSUnet
+  encoder_name: "resnet34"
+#  encoder_weights: "/logs/papers/structseg/resnet34-tx-crop/checkpoints/best.pth"
+  classes: 7
+
+
+runner_params:
+  input_key: &input_key images
+  output_key: logits
+  input_target_key: targets
+
+
+experiment_params:
+  experiment: StructSeg
+
+
+distributed_params:
+  opt_level: O1
+
+args:
+  expdir: "src"
+  logdir: "/logs/cv_classification"
+
+stages:
+
+  data_params: &data_params
+    batch_size: 16
+    num_workers: 4
+
+    image_size: &image_size [224, 224]
+    train_csv: "./csv/5folds/train_0.csv"
+    valid_csv: "./csv/5folds/valid_0.csv"
+
+  state_params:
+    main_metric: &reduced_metric dice
+    minimize_metric: False
+
+  criterion_params:
+    criterion: &criterion CrossEntropyLoss
+
+  stage1:
+
+    optimizer_params:
+      optimizer: Adam
+      lr: 0.0001
+
+    scheduler_params:
+      scheduler: OneCycleLRWithWarmup
+      num_steps: &num_epochs 25
+      lr_range: [0.0005, 0.00001]
+      warmup_steps: 5
+      momentum_range: [0.85, 0.95]
+
+    state_params:
+      num_epochs: *num_epochs
+
+    callbacks_params:
+      loss:
+        callback: CriterionCallback
+      optimizer:
+        callback: OptimizerCallback
+      dice:
+        callback: MultiDiceCallback
+        activation: 'Softmax'
+        include_bg: True
+      scheduler:
+        callback: SchedulerCallback
+        reduced_metric: *reduced_metric
+      saver:
+        callback: CheckpointCallback
+        save_n_best: 5
